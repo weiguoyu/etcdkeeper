@@ -28,10 +28,13 @@ var (
 	sep            = flag.String("sep", "/", "separator")
 	separator      = ""
 	usetls         = flag.Bool("usetls", false, "use tls")
+	endpoints      = flag.String("endpoints", "127.0.0.1:2379", "etcd client endpoints")
 	cacert         = flag.String("cacert", "", "verify certificates of TLS-enabled secure servers using this CA bundle (v3)")
 	cert           = flag.String("cert", "", "identify secure client using this TLS certificate file (v3)")
 	keyfile        = flag.String("key", "", "identify secure client using this TLS key file (v3)")
 	useAuth        = flag.Bool("auth", false, "use auth")
+	username       = flag.String("username", "", "etcd user name")
+	password       = flag.String("password", "", "etcd user password")
 	connectTimeout = flag.Int("timeout", 5, "ETCD client connect timeout")
 	rootUsers      = make(map[string]*userInfo) // host:rootUser
 	rootUesrsV2    = make(map[string]*userInfo) // host:rootUser
@@ -79,6 +82,8 @@ func main() {
 	http.HandleFunc("/v3/delete", middleware(nothing, del))
 	// dirctory mode
 	http.HandleFunc("/v3/getpath", middleware(nothing, getPath))
+	// redirect
+	http.HandleFunc("/", middleware(nothing, home))
 
 	wd, err := os.Executable()
 	if err != nil {
@@ -96,7 +101,8 @@ func main() {
 	})
 	//log.Println(http.Dir(rootPath + "/assets"))
 
-	http.Handle("/", http.FileServer(http.Dir(rootPath + "/assets"))) // view static directory
+	// view static directory
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(rootPath + "/assets"))))
 
 	log.Printf("listening on %s:%d\n", *host, *port)
 	err = http.ListenAndServe(*host + ":" + strconv.Itoa(*port), nil)
@@ -109,6 +115,9 @@ func nothing(_ http.ResponseWriter, _ *http.Request) {
 	// Nothing
 }
 
+func home(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/static/etcdkeeper", http.StatusMovedPermanently)
+}
 
 //func v2request(w http.ResponseWriter, r *http.Request){
 //	if err := r.ParseForm(); err != nil {
@@ -579,9 +588,9 @@ func connect(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	defer mu.Unlock()
 	sess := sessmgr.SessionStart(w, r)
-	host := r.FormValue("host")
-	uname := r.FormValue("uname")
-	passwd := r.FormValue("passwd")
+	host := *endpoints
+	uname := *username
+	passwd := *password
 
 	if *useAuth {
 		if _, ok := rootUsers[host]; !ok && uname != "root" { // no root user
@@ -953,7 +962,8 @@ func getTTL(cli *clientv3.Client, lease int64) int64 {
 	return resp.TTL
 }
 
-func getSeparator(w http.ResponseWriter, _ *http.Request) {
+func getSeparator(w http.ResponseWriter, r *http.Request) {
+	SetCookie(w, r, "etcd-endpoint", *endpoints)
 	io.WriteString(w, separator)
 }
 
@@ -1105,4 +1115,61 @@ func getInfo(host string) map[string]string {
 
 func size(num int, unit int) (n, rem int) {
 	return num/unit, num - (num/unit)*unit
+}
+
+// GetCookie retrieves and verifies the cookie value.
+func GetCookie(r *http.Request, name string) (value string) {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return
+	}
+	value = cookie.Value
+	return
+}
+
+// SetCookie writes the cookie value.
+func SetCookie(w http.ResponseWriter, r *http.Request, name, value string) {
+	cookie := http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		Domain:   r.URL.Host,
+		HttpOnly: false,
+		Secure:   IsHTTPS(r),
+		MaxAge:   3600, // the cooke value (token) is responsible for expiration
+	}
+
+	http.SetCookie(w, &cookie)
+}
+
+// DelCookie deletes a cookie.
+func DelCookie(w http.ResponseWriter, r *http.Request, name string) {
+	cookie := http.Cookie{
+		Name:   name,
+		Value:  "deleted",
+		Path:   "/",
+		Domain: r.URL.Host,
+		MaxAge: -1,
+	}
+
+	http.SetCookie(w, &cookie)
+}
+
+// IsHTTPS is a helper function that evaluates the http.Request
+// and returns True if the Request uses HTTPS. It is able to detect,
+// using the X-Forwarded-Proto, if the original request was HTTPS and
+// routed through a reverse proxy with SSL termination.
+func IsHTTPS(r *http.Request) bool {
+	switch {
+	case r.URL.Scheme == "https":
+		return true
+	case r.TLS != nil:
+		return true
+	case strings.HasPrefix(r.Proto, "HTTPS"):
+		return true
+	case r.Header.Get("X-Forwarded-Proto") == "https":
+		return true
+	default:
+		return false
+	}
 }

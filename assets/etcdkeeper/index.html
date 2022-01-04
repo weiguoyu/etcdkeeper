@@ -32,7 +32,7 @@
 	<h2><img src="../framework/logo.png" width="20" style="position:relative;top:3px;"></img><font color="00a0e9"> ETCD</font> Keeper <span id="ver" style="border: 1px solid #D4D4D4;border-radius: 5px;cursor:pointer;">v3</span></h2>
 	<div class="noborder">
 		<img id="userButton" src="../framework/easyui/themes/icons/user.png" width="20" style="position:relative;top:7px;cursor:pointer;"></img>
-		<input id="etcdAddr" class="easyui-textbox" data-options="prompt:'127.0.0.1:2379',onChange:changeHost,iconCls:'icon-server',iconAlign:'left'" style="width:360px;height:30px;"/>
+		<input id="etcdAddr" class="easyui-textbox" data-options="prompt:'127.0.0.1:2379',onChange:changeHost,iconCls:'icon-server',iconAlign:'left'" style="width:360px;height:30px;" disabled/>
 	</div>
 	<div style="margin:20px 0;"></div>
 	<div id="elayout" class="easyui-layout" style="width:100%;height:550px;">
@@ -133,7 +133,6 @@
 
     <div id="versionMenu" class="easyui-menu">
         <div id="version_3" onclick="selVersion('3')">version 3</div>
-        <div id="version_2" onclick="selVersion('2')">version 2</div>
     </div>
 	
 	<script>
@@ -149,10 +148,6 @@
 		var timeout = 5000 // milliseconds
 		var separator = '';
 		var serverBase = '/v3';
-		var etcdBase = Cookies.get('etcd-endpoint');
-		if(typeof(etcdBase) === 'undefined') {
-			etcdBase = '127.0.0.1:2379';
-		}
 
         // version switch
         var version = Cookies.get('etcd-version');
@@ -168,9 +163,9 @@
                     top: e.pageY
                 });
             });
-			$('#userButton').bind('click',function(e){
-                $('#userinfo').window('open');
-            });
+			// $('#userButton').bind('click',function(e){
+            //     $('#userinfo').window('open');
+            // });
         });
         function selVersion(ver) {
             setServerBase(ver);
@@ -221,7 +216,7 @@
 		//if(typeof(autoFormat) === 'undefined') {
 			//autoFormat = 'false';
 		//}
-		
+
 		// get separator
 		$.ajax({
 			type: 'GET',
@@ -248,8 +243,14 @@
                 iconCls: 'icon-ok'
             });
 		});
-		
+
+		var etcdBase
 		function init() {
+			etcdBase = Cookies.get('etcd-endpoint');
+			if(typeof(etcdBase) === 'undefined') {
+				etcdBase = '127.0.0.1:2379';
+			}
+
 			$('#etcdAddr').textbox('setValue', etcdBase);
 			var t = $('#etree').tree({
 				animate:true,
@@ -260,13 +261,14 @@
 		}
 		
 		function changeHost(newValue, oldValue) {
-			if (newValue === '') {
-				$.messager.alert('Error','ETCD address is empty.','error');
-			}else {
-				Cookies.set('etcd-endpoint', newValue, {expires: 30});
-				etcdBase = newValue;
-				connect();
-			}
+			console.log("changeHost", oldValue, " -> ", newValue )
+			// if (newValue === '') {
+			// 	$.messager.alert('Error','ETCD address is empty.','error');
+			// }else {
+			// 	Cookies.set('etcd-endpoint', newValue, {expires: 30});
+			// 	etcdBase = newValue;
+			// 	connect();
+			// }
 		}
 		
 		function connect() {
